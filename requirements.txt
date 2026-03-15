@@ -1,0 +1,24 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.9
+jinja2>=3.1.0
+
+# ML / Zoobot
+torch>=2.1.0
+torchvision>=0.16.0
+zoobot[pytorch]>=2.0.0
+lightning>=2.2.5
+timm>=0.9.10
+torchmetrics>=1.0.0
+
+# Scientific
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+astropy>=6.0.0
+Pillow>=10.0.0
+
+# Utilities
+nest_asyncio>=1.6.0
+huggingface_hub>=0.25.0
