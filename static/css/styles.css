@@ -224,6 +224,12 @@ body {
     text-decoration: underline;
 }
 
+.icon-external {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.25em;
+}
+
 .empty-state {
     color: var(--text-muted);
     font-style: italic;
