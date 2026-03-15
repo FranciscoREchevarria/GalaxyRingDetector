@@ -14,16 +14,60 @@
 
     <div class="view-panels">
         <div class="view-panel view-panel-image">
-            <h2>RGB Image</h2>
+            <div class="view-panel-header">
+                <h2>RGB Image</h2>
+                <button type="button" class="btn-expand" id="expand-rgb" title="Expand image" aria-label="Expand image">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                </button>
+            </div>
             <img
                 src="/api/galaxy_image?ra={{ ra }}&dec={{ dec }}"
                 alt="Galaxy RGB cutout"
                 class="galaxy-image"
+                id="galaxy-rgb-img"
             />
         </div>
         <div class="view-panel view-panel-3d">
-            <h2>3D Surface (g, r, z channels)</h2>
+            <div class="view-panel-header">
+                <h2>3D Surface (g, r, z channels)</h2>
+                <button type="button" class="btn-expand" id="expand-3d" title="Expand 3D plot" aria-label="Expand 3D plot">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                </button>
+            </div>
+            <div class="channel-toggles" id="channel-toggles">
+                <label class="channel-toggle"><input type="checkbox" name="channel" value="g" checked> g</label>
+                <label class="channel-toggle"><input type="checkbox" name="channel" value="r" checked> r</label>
+                <label class="channel-toggle"><input type="checkbox" name="channel" value="z" checked> z</label>
+                <label class="channel-toggle channel-toggle-zwrap"><input type="checkbox" name="zwrap" id="zwrap-main"> Z-axis wrap [0, 1]</label>
+                <label class="channel-toggle channel-toggle-zwrap"><input type="checkbox" name="solid-colors" id="solid-colors-main"> Solid colors</label>
+            </div>
             <div id="plot3d" class="plot3d-container"></div>
+        </div>
+    </div>
+
+    <!-- Expand modal -->
+    <div id="expand-modal" class="expand-modal" role="dialog" aria-modal="true" aria-labelledby="expand-modal-title" hidden>
+        <div class="expand-modal-backdrop"></div>
+        <div class="expand-modal-content">
+            <div class="expand-modal-header">
+                <h2 id="expand-modal-title" class="expand-modal-title"></h2>
+                <button type="button" class="btn-expand-close" id="close-expand-modal" title="Close" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="expand-modal-body">
+                <div id="expand-modal-image" class="expand-modal-image" hidden></div>
+                <div id="expand-modal-3d-wrapper" class="expand-modal-3d-wrapper" hidden>
+                    <div class="channel-toggles channel-toggles-modal" id="channel-toggles-modal">
+                        <label class="channel-toggle"><input type="checkbox" name="channel-modal" value="g" checked> g</label>
+                        <label class="channel-toggle"><input type="checkbox" name="channel-modal" value="r" checked> r</label>
+                        <label class="channel-toggle"><input type="checkbox" name="channel-modal" value="z" checked> z</label>
+                        <label class="channel-toggle channel-toggle-zwrap"><input type="checkbox" name="zwrap-modal" id="zwrap-modal"> Z-axis wrap [0, 1]</label>
+                        <label class="channel-toggle channel-toggle-zwrap"><input type="checkbox" name="solid-colors-modal" id="solid-colors-modal"> Solid colors</label>
+                    </div>
+                    <div id="expand-modal-3d" class="expand-modal-3d"></div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -31,25 +75,144 @@
 (function() {
     const ra = "{{ ra }}";
     const dec = "{{ dec }}";
+    let plot3dData = null;
+
+    const greenColorscale = [
+        [0, 'rgb(200, 245, 200)'],
+        [0.3, 'rgb(140, 200, 140)'],
+        [0.6, 'rgb(80, 150, 80)'],
+        [1, 'rgb(0, 80, 0)']
+    ];
+    const redColorscale = [
+        [0, 'rgb(255, 220, 220)'],
+        [0.15, 'rgb(255, 220, 220)'],
+        [0.3, 'rgb(210, 160, 160)'],
+        [0.6, 'rgb(150, 80, 80)'],
+        [1, 'rgb(80, 0, 0)']
+    ];
+    const blueColorscale = [
+        [0, 'rgb(220, 235, 255)'],
+        [0.3, 'rgb(170, 195, 240)'],
+        [0.6, 'rgb(120, 150, 215)'],
+        [1, 'rgb(60, 80, 160)']
+    ];
+
+    function buildTraces(data, opacity) {
+        const op = opacity === 1 ? 1 : 0.75;
+        return data.channels.map(ch => ({
+            z: ch.z_data,
+            x: data.x,
+            y: data.y,
+            type: 'surface',
+            name: ch.name,
+            colorscale: ch.name === 'g' ? greenColorscale : ch.name === 'r' ? redColorscale : blueColorscale,
+            opacity: op
+        }));
+    }
+
+    function buildLayout(margin, expanded) {
+        const scene = {
+            xaxis: { title: 'x', autorange: 'reversed' },
+            yaxis: { title: 'y' },
+            zaxis: { title: 'Flux' }
+        };
+        if (expanded) {
+            scene.domain = { x: [0, 1], y: [0, 1] };
+            scene.aspectmode = 'auto';
+        }
+        return {
+            margin: margin || { t: 40, r: 20, b: 40, l: 20 },
+            scene: scene
+        };
+    }
+
+    const channelOrder = ['g', 'r', 'z'];
+
+    function getVisibilityFromCheckboxes(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return [true, true, true];
+        const inputs = container.querySelectorAll('input[name="channel"], input[name="channel-modal"]');
+        return channelOrder.map(name => {
+            const cb = Array.from(inputs).find(i => i.value === name);
+            return cb ? cb.checked : true;
+        });
+    }
+
+    function updatePlotVisibility(plotId, visibility) {
+        const el = document.getElementById(plotId);
+        if (!el) return;
+        Plotly.restyle(el, { visible: visibility });
+    }
+
+    function setupChannelToggles(containerId, plotId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.querySelectorAll('input[name="channel"], input[name="channel-modal"]').forEach(input => {
+            input.addEventListener('change', function() {
+                const visibility = getVisibilityFromCheckboxes(containerId);
+                updatePlotVisibility(plotId, visibility);
+            });
+        });
+    }
+
+    function updateZAxisWrap(plotId, wrap) {
+        const el = document.getElementById(plotId);
+        if (!el) return;
+        if (wrap) {
+            Plotly.relayout(el, { 'scene.zaxis.range': [0, 1], 'scene.zaxis.autorange': false });
+        } else {
+            Plotly.relayout(el, { 'scene.zaxis.autorange': true });
+        }
+    }
+
+    function setupZAxisWrapToggle(checkboxId, plotId) {
+        const cb = document.getElementById(checkboxId);
+        if (!cb) return;
+        cb.addEventListener('change', function() {
+            updateZAxisWrap(plotId, cb.checked);
+        });
+    }
+
+    function updatePlotOpacity(plotId, solid) {
+        const el = document.getElementById(plotId);
+        if (!el) return;
+        const op = solid ? 1 : 0.75;
+        Plotly.restyle(el, { opacity: [op, op, op] });
+    }
+
+    function setupSolidColorsToggle(checkboxId, plotId) {
+        const cb = document.getElementById(checkboxId);
+        if (!cb) return;
+        cb.addEventListener('change', function() {
+            updatePlotOpacity(plotId, cb.checked);
+        });
+    }
+
+    function resetToDefaults() {
+        document.querySelectorAll('#channel-toggles input[name="channel"]').forEach(cb => { cb.checked = true; });
+        document.getElementById('zwrap-main').checked = false;
+        document.getElementById('solid-colors-main').checked = false;
+        const plotEl = document.getElementById('plot3d');
+        if (plotEl && plotEl.data && plot3dData) {
+            Plotly.purge(plotEl);
+            const traces = buildTraces(plot3dData);
+            Plotly.newPlot('plot3d', traces, buildLayout(), { responsive: true });
+        }
+    }
+
+    function initPlot(data) {
+        plot3dData = data;
+        const traces = buildTraces(data);
+        Plotly.newPlot('plot3d', traces, buildLayout(), { responsive: true });
+        setupChannelToggles('channel-toggles', 'plot3d');
+        setupZAxisWrapToggle('zwrap-main', 'plot3d');
+        setupSolidColorsToggle('solid-colors-main', 'plot3d');
+    }
+
     fetch('/api/galaxy_3d_data?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec))
         .then(r => r.json())
         .then(data => {
-            const traces = data.channels.map(ch => ({
-                z: ch.z_data,
-                x: data.x,
-                y: data.y,
-                type: 'surface',
-                name: ch.name,
-                colorscale: ch.name === 'g' ? 'Greens' : ch.name === 'r' ? 'Reds' : 'Blues'
-            }));
-            Plotly.newPlot('plot3d', traces, {
-                margin: { t: 40, r: 20, b: 40, l: 20 },
-                scene: {
-                    xaxis: { title: 'x' },
-                    yaxis: { title: 'y' },
-                    zaxis: { title: 'Flux' }
-                }
-            }, { responsive: true });
+            initPlot(data);
         })
         .catch(err => {
             const el = document.getElementById('plot3d');
@@ -59,6 +222,77 @@
             p.textContent = 'Failed to load 3D data: ' + (err && err.message ? err.message : String(err));
             el.appendChild(p);
         });
+
+    // Expand modal
+    const modal = document.getElementById('expand-modal');
+    const modalTitle = document.getElementById('expand-modal-title');
+    const modalImage = document.getElementById('expand-modal-image');
+    const modal3dWrapper = document.getElementById('expand-modal-3d-wrapper');
+    const modal3d = document.getElementById('expand-modal-3d');
+    const closeBtn = document.getElementById('close-expand-modal');
+    const backdrop = modal.querySelector('.expand-modal-backdrop');
+
+    function closeModal() {
+        modal.setAttribute('hidden', '');
+        document.body.style.overflow = '';
+        modalImage.hidden = true;
+        modal3dWrapper.hidden = true;
+        modalImage.innerHTML = '';
+        if (modal3d.querySelector('.plotly')) {
+            Plotly.purge(modal3d);
+        }
+    }
+
+    function openModal() {
+        document.body.style.overflow = 'hidden';
+        modal.removeAttribute('hidden');
+    }
+
+    document.getElementById('expand-rgb').addEventListener('click', function() {
+        const img = document.getElementById('galaxy-rgb-img');
+        modalTitle.textContent = 'RGB Image';
+        modalImage.innerHTML = '<img src="' + img.src + '" alt="Galaxy RGB cutout (expanded)" class="expand-modal-img">';
+        modalImage.hidden = false;
+        modal3dWrapper.hidden = true;
+        openModal();
+    });
+
+    document.getElementById('expand-3d').addEventListener('click', function() {
+        if (!plot3dData) return;
+        modalTitle.textContent = '3D Surface (g, r, z channels)';
+        modalImage.hidden = true;
+        modal3dWrapper.hidden = false;
+        modal3d.innerHTML = '';
+        ['g', 'r', 'z'].forEach(name => {
+            const cb = modal3dWrapper.querySelector('input[value="' + name + '"]');
+            if (cb) cb.checked = true;
+        });
+        const solidMain = document.getElementById('solid-colors-main');
+        const solidModal = modal3dWrapper.querySelector('#solid-colors-modal');
+        const opacity = solidMain && solidMain.checked ? 1 : 0.75;
+        const traces = buildTraces(plot3dData, opacity);
+        Plotly.newPlot(modal3d, traces, buildLayout({ t: 20, r: 20, b: 20, l: 0 }, true), { responsive: true });
+        setupChannelToggles('channel-toggles-modal', 'expand-modal-3d');
+        const zwrapModal = modal3dWrapper.querySelector('#zwrap-modal');
+        if (zwrapModal) zwrapModal.checked = document.getElementById('zwrap-main').checked;
+        setupZAxisWrapToggle('zwrap-modal', 'expand-modal-3d');
+        if (zwrapModal && zwrapModal.checked) updateZAxisWrap('expand-modal-3d', true);
+        if (solidModal) solidModal.checked = solidMain ? solidMain.checked : false;
+        setupSolidColorsToggle('solid-colors-modal', 'expand-modal-3d');
+        openModal();
+    });
+
+    closeBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !modal.hasAttribute('hidden')) closeModal();
+    });
+
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted) {
+            resetToDefaults();
+        }
+    });
 })();
 </script>
 {% endblock %}
