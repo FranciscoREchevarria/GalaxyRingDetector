@@ -1,0 +1,17 @@
+{% for row in results|default([]) %}
+<tr{% if row.get('error') %} title="Error: {{ row.error }}"{% endif %}>
+    <td>{{ row.objId }}</td>
+    <td>{{ row.ra }}</td>
+    <td>{{ row.dec }}</td>
+    <td>{{ "%.4f"|format(row.inner_ring_prob) }}</td>
+    <td>{{ "%.4f"|format(row.outer_ring_prob) }}</td>
+    <td>{{ "Yes" if row.inner_ring_detected else "No" }}</td>
+    <td>{{ "Yes" if row.outer_ring_detected else "No" }}</td>
+    <td><a href="{{ row.link }}" target="_blank" rel="noopener">Legacy Survey</a></td>
+    <td><a href="/view/{{ row.objId }}?ra={{ row.ra }}&dec={{ row.dec }}" class="btn btn-small">View</a></td>
+</tr>
+{% else %}
+<tr>
+    <td colspan="9" class="empty-state">Load a CSV file to run batch predictions.</td>
+</tr>
+{% endfor %}

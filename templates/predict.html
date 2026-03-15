@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Galaxy Ring Detection - Predict One{% endblock %}
+
+{% block head_scripts %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Predict One Galaxy</h1>
+</div>
+
+<div class="predict-form-container">
+    <form
+        hx-post="/api/predict_from_url"
+        hx-target="#result-area"
+        hx-swap="innerHTML"
+        hx-indicator="#spinner"
+        class="predict-form"
+    >
+        <label for="legacy_survey_url">Legacy Survey Cutout URL</label>
+        <input
+            type="url"
+            id="legacy_survey_url"
+            name="legacy_survey_url"
+            placeholder="https://www.legacysurvey.org/viewer/cutout.fits?ra=57.85&dec=-15.40&layer=ls-dr9&pixscale=0.262&size=256&bands=grz"
+            required
+        />
+        <button type="submit" class="btn btn-primary">Predict</button>
+    </form>
+
+    <div id="spinner" class="htmx-indicator">
+        <span class="spinner"></span> Processing...
+    </div>
+</div>
+
+<div id="result-area" class="result-area"></div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    htmx.on('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id === 'result-area') {
+            const card = evt.detail.target.querySelector('.predict-result-card');
+            if (card) {
+                const ra = card.dataset.ra;
+                const dec = card.dataset.dec;
+                if (ra && dec) {
+                    const container = document.getElementById('predict-3d-container');
+                    if (container) {
+                        fetch('/api/galaxy_3d_data?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec))
+                            .then(r => r.json())
+                            .then(data => {
+                                const traces = data.channels.map(ch => ({
+                                    z: ch.z_data,
+                                    x: data.x,
+                                    y: data.y,
+                                    type: 'surface',
+                                    name: ch.name,
+                                    colorscale: ch.name === 'g' ? 'Greens' : ch.name === 'r' ? 'Reds' : 'Blues'
+                                }));
+                                Plotly.newPlot('predict-3d-container', traces, {
+                                    margin: { t: 40, r: 20, b: 40, l: 20 },
+                                    scene: {
+                                        xaxis: { title: 'x' },
+                                        yaxis: { title: 'y' },
+                                        zaxis: { title: 'Flux' }
+                                    }
+                                }, { responsive: true });
+                            })
+                            .catch(err => {
+                                container.textContent = '';
+                                const p = document.createElement('p');
+                                p.className = 'error';
+                                p.textContent = 'Failed to load 3D data: ' + (err && err.message ? err.message : String(err));
+                                container.appendChild(p);
+                            });
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,33 @@
+<div class="predict-result-card" data-ra="{{ ra }}" data-dec="{{ dec }}">
+    <h3>Prediction Result</h3>
+    <div class="result-stats">
+        <div class="stat">
+            <span class="stat-label">Inner Ring Prob</span>
+            <span class="stat-value">{{ "%.4f"|format(inner_ring_prob) }}</span>
+            <span class="stat-badge {{ 'detected' if inner_ring_detected else 'not-detected' }}">
+                {{ "Detected" if inner_ring_detected else "Not detected" }}
+            </span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Outer Ring Prob</span>
+            <span class="stat-value">{{ "%.4f"|format(outer_ring_prob) }}</span>
+            <span class="stat-badge {{ 'detected' if outer_ring_detected else 'not-detected' }}">
+                {{ "Detected" if outer_ring_detected else "Not detected" }}
+            </span>
+        </div>
+    </div>
+    <div class="view-panels">
+        <div class="view-panel view-panel-image">
+            <h2>RGB Image</h2>
+            <img
+                src="/api/galaxy_image?ra={{ ra }}&dec={{ dec }}"
+                alt="Galaxy RGB cutout"
+                class="galaxy-image"
+            />
+        </div>
+        <div class="view-panel view-panel-3d">
+            <h2>3D Surface (g, r, z channels)</h2>
+            <div id="predict-3d-container" class="plot3d-container"></div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Galaxy View - {{ obj_id }}{% endblock %}
+
+{% block head_scripts %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="view-page">
+    <div class="view-header">
+        <h1>Galaxy {{ obj_id }}</h1>
+        <a href="/" class="btn btn-secondary">Back to Grid</a>
+    </div>
+
+    <div class="view-panels">
+        <div class="view-panel view-panel-image">
+            <h2>RGB Image</h2>
+            <img
+                src="/api/galaxy_image?ra={{ ra }}&dec={{ dec }}"
+                alt="Galaxy RGB cutout"
+                class="galaxy-image"
+            />
+        </div>
+        <div class="view-panel view-panel-3d">
+            <h2>3D Surface (g, r, z channels)</h2>
+            <div id="plot3d" class="plot3d-container"></div>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    const ra = "{{ ra }}";
+    const dec = "{{ dec }}";
+    fetch('/api/galaxy_3d_data?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec))
+        .then(r => r.json())
+        .then(data => {
+            const traces = data.channels.map(ch => ({
+                z: ch.z_data,
+                x: data.x,
+                y: data.y,
+                type: 'surface',
+                name: ch.name,
+                colorscale: ch.name === 'g' ? 'Greens' : ch.name === 'r' ? 'Reds' : 'Blues'
+            }));
+            Plotly.newPlot('plot3d', traces, {
+                margin: { t: 40, r: 20, b: 40, l: 20 },
+                scene: {
+                    xaxis: { title: 'x' },
+                    yaxis: { title: 'y' },
+                    zaxis: { title: 'Flux' }
+                }
+            }, { responsive: true });
+        })
+        .catch(err => {
+            const el = document.getElementById('plot3d');
+            el.textContent = '';
+            const p = document.createElement('p');
+            p.className = 'error';
+            p.textContent = 'Failed to load 3D data: ' + (err && err.message ? err.message : String(err));
+            el.appendChild(p);
+        });
+})();
+</script>
+{% endblock %}

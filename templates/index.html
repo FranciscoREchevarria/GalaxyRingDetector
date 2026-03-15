@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Galaxy Ring Detection - Batch Predict{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Galaxy Ring Detection</h1>
+    <div class="actions">
+        <form id="csv-form">
+            <button type="button" id="csv-button" class="btn btn-primary">Load CSV</button>
+            <input type="file" name="file" id="csv-input" accept=".csv" class="hidden" />
+        </form>
+        <a href="/predict" class="btn btn-secondary">Predict One</a>
+    </div>
+</div>
+
+<div id="galaxy-preview" class="galaxy-preview" aria-hidden="true"></div>
+<div class="grid-container">
+    <div class="grid-table-scroll">
+    <table class="galaxy-table">
+        <thead>
+            <tr>
+                <th>objId</th>
+                <th>ra</th>
+                <th>dec</th>
+                <th>Inner Ring Probability</th>
+                <th>Outer Ring Probability</th>
+                <th>Inner Ring (Predicted)</th>
+                <th>Outer Ring (Predicted)</th>
+                <th>Link</th>
+                <th>View</th>
+            </tr>
+        </thead>
+        <tbody id="grid-body">
+            {% include "partials/galaxy_grid.html" %}
+        </tbody>
+    </table>
+    </div>
+    <div id="pagination" class="pagination" aria-hidden="true"></div>
+</div>
+
+<script>
+(function() {
+    const CACHE_KEY = 'galaxy-grid-cache';
+    const PAGE_SIZE = 20;
+    const csvInput = document.getElementById('csv-input');
+    const csvButton = document.getElementById('csv-button');
+    const gridBody = document.getElementById('grid-body');
+    const paginationEl = document.getElementById('pagination');
+
+    let abortController = null;
+    let currentPage = 1;
+
+    function getDataRows() {
+        return Array.from(gridBody.querySelectorAll('tr:not(.progress-row)')).filter(
+            tr => !tr.querySelector('td.empty-state')
+        );
+    }
+
+    function updatePagination(followNewest) {
+        const dataRows = getDataRows();
+        const total = dataRows.length;
+        if (total === 0) {
+            paginationEl.style.display = 'none';
+            paginationEl.setAttribute('aria-hidden', 'true');
+            return;
+        }
+
+        const totalPages = Math.ceil(total / PAGE_SIZE);
+        if (followNewest) {
+            currentPage = totalPages;
+        } else {
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+        }
+
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, total);
+
+        dataRows.forEach((row, i) => {
+            row.style.display = (i >= start && i < end) ? '' : 'none';
+        });
+
+        paginationEl.style.display = 'flex';
+        paginationEl.setAttribute('aria-hidden', 'false');
+
+        const info = document.createElement('span');
+        info.className = 'pagination-info';
+        info.textContent = `Showing ${start + 1}–${end} of ${total}`;
+
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'btn btn-pagination';
+        prevBtn.textContent = 'Previous';
+        prevBtn.disabled = currentPage <= 1;
+        prevBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                updatePagination();
+            }
+        });
+
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.className = 'btn btn-pagination';
+        nextBtn.textContent = 'Next';
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                updatePagination();
+            }
+        });
+
+        const pageLabel = document.createElement('span');
+        pageLabel.className = 'pagination-page';
+        pageLabel.textContent = `Page ${currentPage} of ${totalPages}`;
+
+        paginationEl.innerHTML = '';
+        paginationEl.appendChild(info);
+        paginationEl.appendChild(prevBtn);
+        paginationEl.appendChild(pageLabel);
+        paginationEl.appendChild(nextBtn);
+    }
+
+    function saveGridToCache() {
+        const dataRows = gridBody.querySelectorAll('tr:not(.progress-row)');
+        if (dataRows.length === 0) return;
+        const html = Array.from(dataRows).map(tr => tr.outerHTML).join('');
+        sessionStorage.setItem(CACHE_KEY, html);
+    }
+
+    function restoreGridFromCache() {
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (cached) {
+            gridBody.innerHTML = cached;
+        }
+    }
+
+    restoreGridFromCache();
+    updatePagination();
+
+    // Hover preview for View button (event delegation for dynamically added rows)
+    const previewEl = document.getElementById('galaxy-preview');
+    let previewHideTimer = null;
+
+    function showPreview(btn, ra, dec, objId) {
+        if (previewHideTimer) {
+            clearTimeout(previewHideTimer);
+            previewHideTimer = null;
+        }
+        const rect = btn.getBoundingClientRect();
+        const previewW = 548;
+        const fitsRight = rect.right + 8 + previewW <= window.innerWidth;
+        previewEl.style.left = fitsRight ? (rect.right + 8) + 'px' : (rect.left - previewW - 8) + 'px';
+        previewEl.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - previewW - 16)) + 'px';
+        const imgUrl = objId
+            ? '/api/galaxy_image?obj_id=' + encodeURIComponent(objId) + '&ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec)
+            : '/api/galaxy_image?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec);
+        previewEl.innerHTML = '<img src="' + imgUrl + '" alt="Galaxy RGB preview" loading="eager">';
+        previewEl.classList.add('visible');
+        previewEl.setAttribute('aria-hidden', 'false');
+    }
+
+    function hidePreview(delay) {
+        if (previewHideTimer) clearTimeout(previewHideTimer);
+        previewHideTimer = setTimeout(function() {
+            previewEl.classList.remove('visible');
+            previewEl.setAttribute('aria-hidden', 'true');
+            previewHideTimer = null;
+        }, delay || 0);
+    }
+
+    gridBody.addEventListener('mouseover', function(e) {
+        const btn = e.target.closest('.btn-view');
+        if (btn && btn.dataset.ra && btn.dataset.dec) {
+            showPreview(btn, btn.dataset.ra, btn.dataset.dec, btn.dataset.objId);
+        }
+    });
+
+    gridBody.addEventListener('mouseout', function(e) {
+        const btn = e.target.closest('.btn-view');
+        const toPreview = e.relatedTarget && previewEl && previewEl.contains(e.relatedTarget);
+        if (btn && !toPreview) hidePreview(200);
+    });
+
+    if (previewEl) {
+        previewEl.addEventListener('mouseenter', function() {
+            if (previewHideTimer) {
+                clearTimeout(previewHideTimer);
+                previewHideTimer = null;
+            }
+        });
+        previewEl.addEventListener('mouseleave', function() {
+            hidePreview(100);
+        });
+    }
+
+    csvButton.addEventListener('click', function() {
+        if (abortController) {
+            abortController.abort();
+            return;
+        }
+        csvInput.click();
+    });
+
+    function createProgressRow(total) {
+        const tr = document.createElement('tr');
+        tr.id = 'progress-row';
+        tr.className = 'progress-row';
+        tr.innerHTML = '<td colspan="9"><span class="spinner"></span> Predicting... <span id="progress-count">0</span> / <span id="progress-total">' + total + '</span><span id="progress-pct"></span></td>';
+        return tr;
+    }
+
+    function parseSSE(text) {
+        const events = [];
+        let currentEvent = null;
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (line.startsWith('event: ')) {
+                if (currentEvent) events.push(currentEvent);
+                currentEvent = { type: line.slice(7).trim(), data: [] };
+            } else if (line.startsWith('data: ') && currentEvent) {
+                currentEvent.data.push(line.slice(6));
+            } else if (line === '' && currentEvent) {
+                events.push(currentEvent);
+                currentEvent = null;
+            }
+        }
+        if (currentEvent) events.push(currentEvent);
+        return events;
+    }
+
+    function restoreLoadButton() {
+        abortController = null;
+        csvButton.textContent = 'Load CSV';
+        csvButton.classList.remove('btn-stop');
+    }
+
+    csvInput.addEventListener('change', async function(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        abortController = new AbortController();
+        csvButton.textContent = 'Stop';
+        csvButton.classList.add('btn-stop');
+
+        const formData = new FormData();
+        formData.append('file', file);
+        csvInput.value = '';
+
+        gridBody.innerHTML = '';
+        sessionStorage.removeItem(CACHE_KEY);
+        currentPage = 1;
+        let total = 0;
+        const progressRow = createProgressRow('?');
+        gridBody.appendChild(progressRow);
+        updatePagination();
+
+        let buffer = '';
+        try {
+            const res = await fetch('/api/batch_predict', {
+                method: 'POST',
+                body: formData,
+                signal: abortController.signal
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                throw new Error(err || 'Request failed');
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || '';
+                for (const part of parts) {
+                    const events = parseSSE(part + '\n\n');
+                    for (const ev of events) {
+                        const data = ev.data.join('\n');
+                        if (ev.type === 'meta') {
+                            const meta = JSON.parse(data);
+                            total = meta.total;
+                            progressRow.querySelector('#progress-total').textContent = total;
+                            progressRow.querySelector('#progress-pct').textContent = total > 0 ? ' (0%)' : '';
+                        } else if (ev.type === 'row') {
+                            const temp = document.createElement('tbody');
+                            temp.innerHTML = data.trim();
+                            const newRow = temp.querySelector('tr');
+                            if (newRow) {
+                                newRow.classList.add('row-fade-in');
+                                gridBody.insertBefore(newRow, progressRow);
+                            }
+                            saveGridToCache();
+                            updatePagination(true);
+                            const countEl = document.getElementById('progress-count');
+                            const pctEl = document.getElementById('progress-pct');
+                            if (countEl) {
+                                const current = gridBody.querySelectorAll('tr:not(.progress-row)').length;
+                                countEl.textContent = current;
+                                if (pctEl && total > 0) {
+                                    const pct = current === total ? 100 : Math.floor((current / total) * 100);
+                                    pctEl.textContent = ' (' + pct + '%)';
+                                }
+                            }
+                        } else if (ev.type === 'done') {
+                            if (progressRow.parentNode) progressRow.remove();
+                            saveGridToCache();
+                            updatePagination();
+                        }
+                    }
+                }
+            }
+            if (buffer) {
+                const events = parseSSE(buffer);
+                for (const ev of events) {
+                    if (ev.type === 'done') {
+                        const pr = document.getElementById('progress-row');
+                        if (pr && pr.parentNode) pr.remove();
+                        saveGridToCache();
+                        updatePagination();
+                    }
+                }
+            }
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                const pr = document.getElementById('progress-row');
+                if (pr && pr.parentNode) pr.remove();
+                saveGridToCache();
+                updatePagination();
+            } else {
+                gridBody.innerHTML = '<tr><td colspan="9" class="empty-state error">' + (err.message || 'Failed to load predictions') + '</td></tr>';
+            }
+        } finally {
+            restoreLoadButton();
+        }
+    });
+})();
+</script>
+{% endblock %}
