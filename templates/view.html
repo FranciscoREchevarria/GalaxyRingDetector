@@ -248,13 +248,70 @@
         modal.removeAttribute('hidden');
     }
 
+    let rgbZoomScale = 1;
+
+    function setupRgbZoom(imgEl, containerEl, innerEl, zoomIndicatorEl) {
+        rgbZoomScale = 1;
+        const w = imgEl.naturalWidth;
+        const h = imgEl.naturalHeight;
+        if (!w || !h) return;
+
+        function applyZoom() {
+            imgEl.style.width = w + 'px';
+            imgEl.style.height = h + 'px';
+            imgEl.style.transform = 'scale(' + rgbZoomScale + ')';
+            imgEl.style.transformOrigin = '0 0';
+            innerEl.style.width = (w * rgbZoomScale) + 'px';
+            innerEl.style.height = (h * rgbZoomScale) + 'px';
+            if (zoomIndicatorEl) zoomIndicatorEl.textContent = Math.round(rgbZoomScale * 100) + '%';
+        }
+
+        applyZoom();
+        containerEl.scrollTop = 0;
+        containerEl.scrollLeft = 0;
+
+        containerEl.addEventListener('wheel', function onRgbWheel(e) {
+            e.preventDefault();
+            const rect = containerEl.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const scrollX = containerEl.scrollLeft;
+            const scrollY = containerEl.scrollTop;
+
+            const delta = e.deltaY > 0 ? -0.15 : 0.15;
+            const newScale = Math.min(5, Math.max(0.5, rgbZoomScale + delta));
+            if (newScale === rgbZoomScale) return;
+
+            const ratio = newScale / rgbZoomScale;
+            rgbZoomScale = newScale;
+            applyZoom();
+
+            containerEl.scrollLeft = (scrollX + mx) * ratio - mx;
+            containerEl.scrollTop = (scrollY + my) * ratio - my;
+        }, { passive: false });
+    }
+
     document.getElementById('expand-rgb').addEventListener('click', function() {
         const img = document.getElementById('galaxy-rgb-img');
         modalTitle.textContent = 'RGB Image';
-        modalImage.innerHTML = '<img src="' + img.src + '" alt="Galaxy RGB cutout (expanded)" class="expand-modal-img">';
+        modalImage.innerHTML = '<div class="expand-modal-image-zoom"><span class="rgb-zoom-percentage" aria-live="polite">100%</span><div class="expand-modal-image-inner"><img src="' + img.src + '" alt="Galaxy RGB cutout (expanded)" class="expand-modal-img"></div></div>';
         modalImage.hidden = false;
         modal3dWrapper.hidden = true;
         openModal();
+
+        const zoomContainer = modalImage.querySelector('.expand-modal-image-zoom');
+        const innerEl = modalImage.querySelector('.expand-modal-image-inner');
+        const modalImg = modalImage.querySelector('.expand-modal-img');
+        const zoomIndicator = modalImage.querySelector('.rgb-zoom-percentage');
+        if (zoomContainer && innerEl && modalImg) {
+            if (modalImg.complete && modalImg.naturalWidth) {
+                setupRgbZoom(modalImg, zoomContainer, innerEl, zoomIndicator);
+            } else {
+                modalImg.addEventListener('load', function() {
+                    setupRgbZoom(modalImg, zoomContainer, innerEl, zoomIndicator);
+                });
+            }
+        }
     });
 
     document.getElementById('expand-3d').addEventListener('click', function() {
