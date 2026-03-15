@@ -11,6 +11,22 @@
         <h1>Galaxy {{ obj_id }}</h1>
         <a href="/" class="btn btn-secondary">Back to Grid</a>
     </div>
+    <div class="result-stats">
+        <div class="stat">
+            <span class="stat-label">Inner Ring Prob</span>
+            <span class="stat-value">{{ "%.4f"|format(inner_ring_prob) }}</span>
+            <span class="stat-badge {{ 'detected' if inner_ring_detected else 'not-detected' }}">
+                {{ "Detected" if inner_ring_detected else "Not detected" }}
+            </span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Outer Ring Prob</span>
+            <span class="stat-value">{{ "%.4f"|format(outer_ring_prob) }}</span>
+            <span class="stat-badge {{ 'detected' if outer_ring_detected else 'not-detected' }}">
+                {{ "Detected" if outer_ring_detected else "Not detected" }}
+            </span>
+        </div>
+    </div>
 
     <div class="view-panels">
         <div class="view-panel view-panel-image">
@@ -120,10 +136,12 @@
             scene.domain = { x: [0, 1], y: [0, 1] };
             scene.aspectmode = 'auto';
         }
-        return {
+        const layout = {
             margin: margin || { t: 40, r: 20, b: 40, l: 20 },
             scene: scene
         };
+        if (expanded) layout.autosize = true;
+        return layout;
     }
 
     const channelOrder = ['g', 'r', 'z'];
@@ -337,6 +355,7 @@
         if (solidModal) solidModal.checked = solidMain ? solidMain.checked : false;
         setupSolidColorsToggle('solid-colors-modal', 'expand-modal-3d');
         openModal();
+        requestAnimationFrame(function() { Plotly.Plots.resize(modal3d); });
     });
 
     closeBtn.addEventListener('click', closeModal);

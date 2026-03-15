@@ -142,10 +142,12 @@
             scene.domain = { x: [0, 1], y: [0, 1] };
             scene.aspectmode = 'auto';
         }
-        return {
+        const layout = {
             margin: margin || { t: 40, r: 20, b: 40, l: 20 },
             scene: scene
         };
+        if (expanded) layout.autosize = true;
+        return layout;
     }
 
     const channelOrder = ['g', 'r', 'z'];
@@ -341,6 +343,7 @@
                 if (solidModal) solidModal.checked = solidMain ? solidMain.checked : false;
                 setupSolidColorsToggle('predict-solid-colors-modal', 'predict-expand-modal-3d');
                 openModal();
+                requestAnimationFrame(function() { Plotly.Plots.resize(modal3d); });
             };
         }
 

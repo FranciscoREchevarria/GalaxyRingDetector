@@ -153,9 +153,46 @@ async def view_page(request: Request, obj_id: str, ra: str | None = None, dec: s
                 status_code=400,
                 detail="ra and dec are required. Open this page from the grid View link.",
             )
+
+    # Use stored prediction if available, otherwise run prediction
+    stored = getattr(request.app.state, "results", {}).get(obj_id)
+    if stored and "inner_ring_prob" in stored:
+        inner_ring_prob = stored["inner_ring_prob"]
+        outer_ring_prob = stored["outer_ring_prob"]
+        inner_ring_detected = stored["inner_ring_detected"]
+        outer_ring_detected = stored["outer_ring_detected"]
+    else:
+        filename = f"ra{ra}_dec{dec}.fits"
+        image_save_path = IMAGES_DIR / filename
+        if not image_save_path.exists():
+            try:
+                image_save_path = download_legacy_fits(ra, dec, image_save_path)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to download FITS: {e}")
+        try:
+            inner_ring_prob, outer_ring_prob = await asyncio.to_thread(
+                _run_prediction, request.app, image_save_path
+            )
+            inner_ring_detected = inner_ring_prob >= INNER_THRESHOLD
+            outer_ring_detected = outer_ring_prob >= OUTER_THRESHOLD
+        except Exception as e:
+            inner_ring_prob = 0.0
+            outer_ring_prob = 0.0
+            inner_ring_detected = False
+            outer_ring_detected = False
+
     return templates.TemplateResponse(
         "view.html",
-        {"request": request, "obj_id": obj_id, "ra": ra, "dec": dec}
+        {
+            "request": request,
+            "obj_id": obj_id,
+            "ra": ra,
+            "dec": dec,
+            "inner_ring_prob": inner_ring_prob,
+            "outer_ring_prob": outer_ring_prob,
+            "inner_ring_detected": inner_ring_detected,
+            "outer_ring_detected": outer_ring_detected,
+        },
     )
 
 
