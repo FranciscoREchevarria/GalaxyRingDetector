@@ -1,4 +1,4 @@
-<div class="predict-result-card" data-ra="{{ ra }}" data-dec="{{ dec }}">
+<div class="predict-result-card" data-ra="{{ ra or '' }}" data-dec="{{ dec or '' }}" data-fits-id="{{ fits_id or '' }}">
     <h3>Prediction Result</h3>
     <div class="result-stats">
         <div class="stat">
@@ -18,15 +18,42 @@
     </div>
     <div class="view-panels">
         <div class="view-panel view-panel-image">
-            <h2>RGB Image</h2>
+            <div class="view-panel-header">
+                <h2>RGB Image</h2>
+                <button type="button" class="btn-expand" id="predict-expand-rgb" title="Expand image" aria-label="Expand image">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                </button>
+            </div>
+            {% if fits_id %}
+            <img
+                src="/api/galaxy_image_fits?fits_id={{ fits_id }}"
+                alt="Galaxy RGB cutout"
+                class="galaxy-image"
+                id="predict-galaxy-rgb-img"
+            />
+            {% else %}
             <img
                 src="/api/galaxy_image?ra={{ ra }}&dec={{ dec }}"
                 alt="Galaxy RGB cutout"
                 class="galaxy-image"
+                id="predict-galaxy-rgb-img"
             />
+            {% endif %}
         </div>
         <div class="view-panel view-panel-3d">
-            <h2>3D Surface (g, r, z channels)</h2>
+            <div class="view-panel-header">
+                <h2>3D Surface (g, r, z channels)</h2>
+                <button type="button" class="btn-expand" id="predict-expand-3d" title="Expand 3D plot" aria-label="Expand 3D plot">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                </button>
+            </div>
+            <div class="channel-toggles" id="predict-channel-toggles">
+                <label class="channel-toggle"><input type="checkbox" name="channel" value="g" checked> g</label>
+                <label class="channel-toggle"><input type="checkbox" name="channel" value="r" checked> r</label>
+                <label class="channel-toggle"><input type="checkbox" name="channel" value="z" checked> z</label>
+                <label class="channel-toggle channel-toggle-zwrap"><input type="checkbox" name="zwrap" id="predict-zwrap-main"> Z-axis wrap [0, 1]</label>
+                <label class="channel-toggle channel-toggle-zwrap"><input type="checkbox" name="solid-colors" id="predict-solid-colors-main"> Solid colors</label>
+            </div>
             <div id="predict-3d-container" class="plot3d-container"></div>
         </div>
     </div>

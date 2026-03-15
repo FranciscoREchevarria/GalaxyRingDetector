@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import uuid
 from urllib.parse import urlparse
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
@@ -109,9 +110,11 @@ async def lifespan(app: FastAPI):
     app.state.device = device
     app.state.baseline_pipeline = pipeline
     app.state.results = {}  # objId -> prediction result for /view/{objId}
+    app.state.uploaded_fits = {}  # fits_id -> Path for uploaded FITS files
     yield
     # Cleanup if needed
     app.state.results.clear()
+    app.state.uploaded_fits.clear()
 
 
 app = FastAPI(title='Deploying an ML Model with FastAPI', lifespan=lifespan)
@@ -405,12 +408,112 @@ async def predict_from_url(request: Request, legacy_survey_url: str = Form(...))
         "outer_ring_detected": outer_prob >= OUTER_THRESHOLD,
         "ra": ra,
         "dec": dec,
+        "fits_id": None,
     }
 
     return templates.TemplateResponse(
         "partials/predict_result.html",
         {"request": request, **result}
     )
+
+
+@app.post("/api/predict_from_fits", response_class=HTMLResponse)
+async def predict_from_fits(request: Request, fits_file: UploadFile = File(...)):
+    """Predict from uploaded FITS file. Returns HTML partial (predict_result.html) for HTMX swap."""
+    if not fits_file.filename or not fits_file.filename.lower().endswith(('.fits', '.fit')):
+        raise HTTPException(
+            status_code=415,
+            detail="FITS file required (.fits or .fit extension).",
+        )
+
+    fits_id = str(uuid.uuid4())
+    contents = await fits_file.read()
+    image_save_path = IMAGES_DIR / f"upload_{fits_id}.fits"
+    try:
+        image_save_path.write_bytes(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save FITS file: {e}")
+
+    request.app.state.uploaded_fits[fits_id] = image_save_path
+
+    try:
+        inner_prob, outer_prob = await asyncio.to_thread(
+            _run_prediction, request.app, image_save_path
+        )
+    except Exception as e:
+        if fits_id in request.app.state.uploaded_fits:
+            del request.app.state.uploaded_fits[fits_id]
+        try:
+            image_save_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
+
+    result = {
+        "inner_ring_prob": inner_prob,
+        "outer_ring_prob": outer_prob,
+        "inner_ring_detected": inner_prob >= INNER_THRESHOLD,
+        "outer_ring_detected": outer_prob >= OUTER_THRESHOLD,
+        "ra": None,
+        "dec": None,
+        "fits_id": fits_id,
+    }
+
+    return templates.TemplateResponse(
+        "partials/predict_result.html",
+        {"request": request, **result}
+    )
+
+
+@app.get("/api/galaxy_image_fits")
+async def galaxy_image_fits(request: Request, fits_id: str):
+    """Return PNG image from uploaded FITS file by fits_id."""
+    path = getattr(request.app.state, "uploaded_fits", {}).get(fits_id)
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="FITS file not found or expired")
+    png_buf = fits_to_rgb_png(path, stretch=0.5, Q=6)
+    return StreamingResponse(png_buf, media_type="image/png")
+
+
+@app.get("/api/galaxy_3d_data_fits")
+async def galaxy_3d_data_fits(request: Request, fits_id: str):
+    """Load uploaded FITS, apply baseline pipeline, downsample to 64x64, return JSON for Plotly surface."""
+    path = getattr(request.app.state, "uploaded_fits", {}).get(fits_id)
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="FITS file not found or expired")
+
+    with fits.open(path) as hdul:
+        data = hdul[0].data
+    data = np.asarray(data, dtype=np.float32)
+
+    pipeline = request.app.state.baseline_pipeline
+    tensor = torch.from_numpy(data)
+    transformed = pipeline(tensor)
+    if isinstance(transformed, torch.Tensor):
+        arr = transformed.detach().cpu().numpy()
+    else:
+        arr = np.asarray(transformed)
+
+    target_size = 64
+    h, w = arr.shape[1], arr.shape[2]
+    if h == 0 or w == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid FITS image: zero height or width",
+        )
+    if h != target_size or w != target_size:
+        factors = (1, target_size / h, target_size / w)
+        arr = zoom(arr, factors, order=1)
+
+    channel_names = ['g', 'r', 'z']
+    channels = [
+        {"name": name, "z_data": arr[i].tolist()}
+        for i, name in enumerate(channel_names)
+    ]
+    x = list(range(arr.shape[2]))
+    y = list(range(arr.shape[1]))
+
+    return {"channels": channels, "x": x, "y": y}
 
 
 if __name__ == "__main__":

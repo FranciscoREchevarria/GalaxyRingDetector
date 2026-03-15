@@ -304,14 +304,25 @@ body {
 
 /* Predict form */
 .predict-form-container {
-    max-width: 600px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1.5rem;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.predict-form-col {
+    flex: 1;
+    min-width: 260px;
 }
 
 .predict-form {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
 }
 
 .predict-form label {
@@ -336,6 +347,43 @@ body {
 .predict-form input:focus {
     outline: none;
     border-color: var(--accent);
+}
+
+.predict-form-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.url-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.url-input-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-input-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.file-input-row input[type="file"] {
+    flex: 1;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.predict-form-container > .htmx-indicator {
+    flex-basis: 100%;
 }
 
 .htmx-indicator {
@@ -736,6 +784,16 @@ body {
 }
 
 @media (max-width: 600px) {
+    .predict-form-col {
+        min-width: 100%;
+    }
+
+    .predict-form-divider {
+        width: 100%;
+        flex-basis: 100%;
+        padding: 0.5rem 0;
+    }
+
     .main {
         padding: 1rem;
     }
