@@ -7,6 +7,10 @@
     <h1>Galaxy Ring Detection</h1>
     <div class="actions">
         <form id="csv-form">
+            <label class="fast-prediction-option" title="Skip test-time augmentation (1 pass instead of 8). Faster but slightly less accurate.">
+                <input type="checkbox" id="fast-prediction" name="fast" />
+                Fast prediction
+            </label>
             <button type="button" id="csv-button" class="btn btn-primary">Load CSV</button>
             <input type="file" name="file" id="csv-input" accept=".csv" class="hidden" />
         </form>
@@ -36,37 +40,96 @@
         </tbody>
     </table>
     </div>
-    <div id="pagination" class="pagination" aria-hidden="true"></div>
+    <div id="pagination-bar" class="pagination-bar" aria-hidden="true">
+        <div id="pagination" class="pagination" aria-hidden="true"></div>
+        <div id="page-size-wrap" class="page-size-wrap" aria-hidden="true">
+            <label for="page-size-select">Rows per page</label>
+            <select id="page-size-select" class="page-size-select" aria-label="Rows per page">
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+    </div>
 </div>
 
 <script>
 (function() {
     const CACHE_KEY = 'galaxy-grid-cache';
-    const PAGE_SIZE = 20;
+    const PAGE_CACHE_KEY = 'galaxy-grid-page';
+    const PAGE_SIZE_CACHE_KEY = 'galaxy-grid-page-size';
+    const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
     const csvInput = document.getElementById('csv-input');
     const csvButton = document.getElementById('csv-button');
     const gridBody = document.getElementById('grid-body');
     const paginationEl = document.getElementById('pagination');
+    const paginationBar = document.getElementById('pagination-bar');
+    const pageSizeSelect = document.getElementById('page-size-select');
+    const pageSizeWrap = document.getElementById('page-size-wrap');
 
-    let abortController = null;
     let currentPage = 1;
+    const savedPage = sessionStorage.getItem(PAGE_CACHE_KEY);
+    if (savedPage) {
+        const p = parseInt(savedPage, 10);
+        if (p >= 1) currentPage = p;
+    }
+
+    function getPageSize() {
+        const val = pageSizeSelect ? parseInt(pageSizeSelect.value, 10) : 20;
+        return PAGE_SIZE_OPTIONS.includes(val) ? val : 10;
+    }
+
+    function initPageSizeSelect() {
+        const saved = sessionStorage.getItem(PAGE_SIZE_CACHE_KEY);
+        if (saved) {
+            const n = parseInt(saved, 10);
+            if (PAGE_SIZE_OPTIONS.includes(n) && pageSizeSelect) {
+                pageSizeSelect.value = String(n);
+            }
+        }
+        if (pageSizeSelect) {
+            pageSizeSelect.addEventListener('change', function() {
+                const size = getPageSize();
+                sessionStorage.setItem(PAGE_SIZE_CACHE_KEY, String(size));
+                currentPage = 1;
+                updatePagination();
+            });
+        }
+    }
 
     function getDataRows() {
-        return Array.from(gridBody.querySelectorAll('tr:not(.progress-row)')).filter(
+        return Array.from(gridBody.querySelectorAll('tr')).filter(
             tr => !tr.querySelector('td.empty-state')
         );
     }
 
-    function updatePagination(followNewest) {
+    function updatePagination(followNewest, skipRebuild) {
+        const pageSize = getPageSize();
+        if (skipRebuild) {
+            const dataRows = getDataRows();
+            const total = dataRows.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (followNewest) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const end = Math.min(start + pageSize, total);
+            dataRows.forEach((row, i) => {
+                row.style.display = (i >= start && i < end) ? '' : 'none';
+            });
+            if (total > 0) sessionStorage.setItem(PAGE_CACHE_KEY, String(currentPage));
+            return;
+        }
         const dataRows = getDataRows();
         const total = dataRows.length;
         if (total === 0) {
-            paginationEl.style.display = 'none';
-            paginationEl.setAttribute('aria-hidden', 'true');
+            if (paginationBar) {
+                paginationBar.style.display = 'none';
+                paginationBar.setAttribute('aria-hidden', 'true');
+            }
             return;
         }
 
-        const totalPages = Math.ceil(total / PAGE_SIZE);
+        const totalPages = Math.ceil(total / pageSize);
         if (followNewest) {
             currentPage = totalPages;
         } else {
@@ -74,19 +137,33 @@
             if (currentPage < 1) currentPage = 1;
         }
 
-        const start = (currentPage - 1) * PAGE_SIZE;
-        const end = Math.min(start + PAGE_SIZE, total);
+        const start = (currentPage - 1) * pageSize;
+        const end = Math.min(start + pageSize, total);
 
         dataRows.forEach((row, i) => {
             row.style.display = (i >= start && i < end) ? '' : 'none';
         });
 
-        paginationEl.style.display = 'flex';
-        paginationEl.setAttribute('aria-hidden', 'false');
+        if (paginationBar) {
+            paginationBar.style.display = 'flex';
+            paginationBar.setAttribute('aria-hidden', 'false');
+        }
 
         const info = document.createElement('span');
         info.className = 'pagination-info';
         info.textContent = `Showing ${start + 1}–${end} of ${total}`;
+
+        const firstBtn = document.createElement('button');
+        firstBtn.type = 'button';
+        firstBtn.className = 'btn btn-pagination';
+        firstBtn.textContent = 'First';
+        firstBtn.disabled = currentPage <= 1;
+        firstBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage = 1;
+                updatePagination();
+            }
+        });
 
         const prevBtn = document.createElement('button');
         prevBtn.type = 'button';
@@ -112,33 +189,100 @@
             }
         });
 
+        const lastBtn = document.createElement('button');
+        lastBtn.type = 'button';
+        lastBtn.className = 'btn btn-pagination';
+        lastBtn.textContent = 'Last';
+        lastBtn.disabled = currentPage >= totalPages;
+        lastBtn.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage = totalPages;
+                updatePagination();
+            }
+        });
+
         const pageLabel = document.createElement('span');
         pageLabel.className = 'pagination-page';
         pageLabel.textContent = `Page ${currentPage} of ${totalPages}`;
 
         paginationEl.innerHTML = '';
         paginationEl.appendChild(info);
+        paginationEl.appendChild(firstBtn);
         paginationEl.appendChild(prevBtn);
         paginationEl.appendChild(pageLabel);
         paginationEl.appendChild(nextBtn);
+        paginationEl.appendChild(lastBtn);
+
+        if (getDataRows().length > 0) {
+            sessionStorage.setItem(PAGE_CACHE_KEY, String(currentPage));
+        }
     }
 
     function saveGridToCache() {
-        const dataRows = gridBody.querySelectorAll('tr:not(.progress-row)');
+        var gb = document.getElementById('grid-body');
+        if (!gb) return;
+        var dataRows = Array.from(gb.querySelectorAll('tr')).filter(
+            function(tr) { return !tr.querySelector('td.empty-state'); }
+        );
         if (dataRows.length === 0) return;
-        const html = Array.from(dataRows).map(tr => tr.outerHTML).join('');
+        var html = Array.from(dataRows).map(function(tr) { return tr.outerHTML; }).join('');
         sessionStorage.setItem(CACHE_KEY, html);
     }
 
+    function applyCompletedPredictions(html) {
+        const completed = window.GalaxyPredict && window.GalaxyPredict.getCompletedPredictions();
+        if (!completed || Object.keys(completed).length === 0) return html;
+        const temp = document.createElement('tbody');
+        temp.innerHTML = html;
+        temp.querySelectorAll('tr[data-obj-id]').forEach(function(tr) {
+            const objId = tr.getAttribute('data-obj-id');
+            if (completed[objId]) {
+                const wrapper = document.createElement('tbody');
+                wrapper.innerHTML = completed[objId].trim();
+                const newTr = wrapper.querySelector('tr');
+                if (newTr) tr.replaceWith(newTr);
+                if (window.GalaxyPredict) window.GalaxyPredict.removeCompletedPrediction(objId);
+            }
+        });
+        return temp.innerHTML;
+    }
+
+    function applyInProgressState(html) {
+        const inProgress = window.GalaxyPredict && window.GalaxyPredict.getInProgressObjIds();
+        if (!inProgress || inProgress.size === 0) return html;
+        const temp = document.createElement('tbody');
+        temp.innerHTML = html;
+        temp.querySelectorAll('tr[data-obj-id]').forEach(function(tr) {
+            const objId = tr.getAttribute('data-obj-id');
+            if (inProgress.has(objId)) {
+                const lastCell = tr.querySelector('td:last-child');
+                if (lastCell) {
+                    lastCell.classList.add('view-cell-loading');
+                    lastCell.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
+                    lastCell.setAttribute('aria-busy', 'true');
+                }
+            }
+        });
+        return temp.innerHTML;
+    }
+
     function restoreGridFromCache() {
-        const cached = sessionStorage.getItem(CACHE_KEY);
+        let cached = sessionStorage.getItem(CACHE_KEY);
         if (cached) {
+            cached = applyCompletedPredictions(cached);
+            cached = applyInProgressState(cached);
             gridBody.innerHTML = cached;
         }
     }
 
     restoreGridFromCache();
+    initPageSizeSelect();
     updatePagination();
+
+    if (window.GalaxyPredict) {
+        window.GalaxyPredict.renderPredictModal();
+        window.GalaxyPredict.processPredictQueue(gridBody, saveGridToCache);
+    }
 
     // Hover preview for View button (event delegation for dynamically added rows)
     const previewEl = document.getElementById('galaxy-preview');
@@ -157,7 +301,22 @@
         const imgUrl = objId
             ? '/api/galaxy_image?obj_id=' + encodeURIComponent(objId) + '&ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec)
             : '/api/galaxy_image?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec);
-        previewEl.innerHTML = '<img src="' + imgUrl + '" alt="Galaxy RGB preview" loading="eager">';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'galaxy-preview-loading';
+        loadingDiv.textContent = 'Loading…';
+        const img = document.createElement('img');
+        img.alt = 'Galaxy RGB preview';
+        img.loading = 'eager';
+        img.onload = function() {
+            loadingDiv.classList.add('loaded');
+        };
+        img.onerror = function() {
+            loadingDiv.classList.add('loaded');
+        };
+        previewEl.innerHTML = '';
+        previewEl.appendChild(loadingDiv);
+        previewEl.appendChild(img);
+        img.src = imgUrl;
         previewEl.classList.add('visible');
         previewEl.setAttribute('aria-hidden', 'false');
     }
@@ -196,145 +355,86 @@
         });
     }
 
-    csvButton.addEventListener('click', function() {
-        if (abortController) {
-            abortController.abort();
-            return;
+    gridBody.addEventListener('click', function(e) {
+        const retryEl = e.target.closest('.row-retry');
+        const predictEl = e.target.closest('.btn-predict');
+        if (retryEl && window.GalaxyPredict) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.GalaxyPredict.handlePredictOrRetry(retryEl, gridBody, saveGridToCache);
+        } else if (predictEl && window.GalaxyPredict) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.GalaxyPredict.handlePredictOrRetry(predictEl, gridBody, saveGridToCache);
         }
-        csvInput.click();
     });
 
-    function createProgressRow(total) {
-        const tr = document.createElement('tr');
-        tr.id = 'progress-row';
-        tr.className = 'progress-row';
-        tr.innerHTML = '<td colspan="9"><span class="spinner"></span> Predicting... <span id="progress-count">0</span> / <span id="progress-total">' + total + '</span><span id="progress-pct"></span></td>';
-        return tr;
-    }
-
-    function parseSSE(text) {
-        const events = [];
-        let currentEvent = null;
-        const lines = text.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('event: ')) {
-                if (currentEvent) events.push(currentEvent);
-                currentEvent = { type: line.slice(7).trim(), data: [] };
-            } else if (line.startsWith('data: ') && currentEvent) {
-                currentEvent.data.push(line.slice(6));
-            } else if (line === '' && currentEvent) {
-                events.push(currentEvent);
-                currentEvent = null;
-            }
+    gridBody.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        const retryEl = e.target.closest('.row-retry');
+        const predictEl = e.target.closest('.btn-predict');
+        if (retryEl && window.GalaxyPredict) {
+            e.preventDefault();
+            window.GalaxyPredict.handlePredictOrRetry(retryEl, gridBody, saveGridToCache);
+        } else if (predictEl && window.GalaxyPredict) {
+            e.preventDefault();
+            window.GalaxyPredict.handlePredictOrRetry(predictEl, gridBody, saveGridToCache);
         }
-        if (currentEvent) events.push(currentEvent);
-        return events;
-    }
+    });
 
-    function restoreLoadButton() {
-        abortController = null;
-        csvButton.textContent = 'Load CSV';
-        csvButton.classList.remove('btn-stop');
-    }
+    csvButton.addEventListener('click', function() {
+        csvInput.click();
+    });
 
     csvInput.addEventListener('change', async function(e) {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        abortController = new AbortController();
-        csvButton.textContent = 'Stop';
-        csvButton.classList.add('btn-stop');
-
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('fast', document.getElementById('fast-prediction').checked ? 'true' : 'false');
+        sessionStorage.setItem('fast_predict', document.getElementById('fast-prediction').checked ? 'true' : 'false');
         csvInput.value = '';
 
-        gridBody.innerHTML = '';
+        gridBody.innerHTML = '<tr><td colspan="9" class="empty-state">Loading…</td></tr>';
+        if (previewEl) {
+            previewEl.classList.remove('visible');
+            previewEl.setAttribute('aria-hidden', 'true');
+            if (previewHideTimer) { clearTimeout(previewHideTimer); previewHideTimer = null; }
+        }
         sessionStorage.removeItem(CACHE_KEY);
+        sessionStorage.removeItem(PAGE_CACHE_KEY);
+        if (window.GalaxyPredict) window.GalaxyPredict.clearPredictState();
         currentPage = 1;
-        let total = 0;
-        const progressRow = createProgressRow('?');
-        gridBody.appendChild(progressRow);
-        updatePagination();
 
-        let buffer = '';
         try {
-            const res = await fetch('/api/batch_predict', {
+            const res = await fetch('/api/load_csv', {
                 method: 'POST',
                 body: formData,
-                signal: abortController.signal
             });
             if (!res.ok) {
                 const err = await res.text();
                 throw new Error(err || 'Request failed');
             }
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const parts = buffer.split('\n\n');
-                buffer = parts.pop() || '';
-                for (const part of parts) {
-                    const events = parseSSE(part + '\n\n');
-                    for (const ev of events) {
-                        const data = ev.data.join('\n');
-                        if (ev.type === 'meta') {
-                            const meta = JSON.parse(data);
-                            total = meta.total;
-                            progressRow.querySelector('#progress-total').textContent = total;
-                            progressRow.querySelector('#progress-pct').textContent = total > 0 ? ' (0%)' : '';
-                        } else if (ev.type === 'row') {
-                            const temp = document.createElement('tbody');
-                            temp.innerHTML = data.trim();
-                            const newRow = temp.querySelector('tr');
-                            if (newRow) {
-                                newRow.classList.add('row-fade-in');
-                                gridBody.insertBefore(newRow, progressRow);
-                            }
-                            saveGridToCache();
-                            updatePagination(true);
-                            const countEl = document.getElementById('progress-count');
-                            const pctEl = document.getElementById('progress-pct');
-                            if (countEl) {
-                                const current = gridBody.querySelectorAll('tr:not(.progress-row)').length;
-                                countEl.textContent = current;
-                                if (pctEl && total > 0) {
-                                    const pct = current === total ? 100 : Math.floor((current / total) * 100);
-                                    pctEl.textContent = ' (' + pct + '%)';
-                                }
-                            }
-                        } else if (ev.type === 'done') {
-                            if (progressRow.parentNode) progressRow.remove();
-                            saveGridToCache();
-                            updatePagination();
-                        }
-                    }
-                }
+            const data = await res.json().catch(function() { return {}; });
+            const rowsHtml = data.rows_html || '';
+            gridBody.querySelector('tr td.empty-state')?.closest('tr')?.remove();
+            if (rowsHtml) {
+                const temp = document.createElement('tbody');
+                temp.innerHTML = rowsHtml.trim();
+                const rows = temp.querySelectorAll('tr');
+                rows.forEach(function(tr) {
+                    tr.classList.add('row-fade-in');
+                    gridBody.appendChild(tr);
+                });
             }
-            if (buffer) {
-                const events = parseSSE(buffer);
-                for (const ev of events) {
-                    if (ev.type === 'done') {
-                        const pr = document.getElementById('progress-row');
-                        if (pr && pr.parentNode) pr.remove();
-                        saveGridToCache();
-                        updatePagination();
-                    }
-                }
+            if (getDataRows().length === 0) {
+                gridBody.innerHTML = '<tr><td colspan="9" class="empty-state">Load a CSV file to run batch predictions.</td></tr>';
             }
+            saveGridToCache();
+            updatePagination();
         } catch (err) {
-            if (err.name === 'AbortError') {
-                const pr = document.getElementById('progress-row');
-                if (pr && pr.parentNode) pr.remove();
-                saveGridToCache();
-                updatePagination();
-            } else {
-                gridBody.innerHTML = '<tr><td colspan="9" class="empty-state error">' + (err.message || 'Failed to load predictions') + '</td></tr>';
-            }
-        } finally {
-            restoreLoadButton();
+            gridBody.innerHTML = '<tr><td colspan="9" class="empty-state error">' + (err.message || 'Failed to load CSV') + '</td></tr>';
         }
     });
 })();

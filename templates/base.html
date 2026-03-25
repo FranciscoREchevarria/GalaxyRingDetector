@@ -5,16 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Galaxy Ring Detection{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="/static/js/predict-modal.js"></script>
+    <script src="/static/js/legacy-status.js" defer></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="/static/js/predict.js"></script>
     {% block head_scripts %}{% endblock %}
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
+<body hx-boost="true" hx-target="main" hx-swap="outerHTML" hx-select="main">
     <nav class="nav">
         <a href="/" class="nav-link">Home</a>
         <a href="/predict" class="nav-link">Predict One</a>
+        <span class="nav-status" id="legacy-survey-status" title="Legacy Survey API reachability">
+            <span class="status-dot status-pending" aria-hidden="true"></span>
+            <span class="status-label">Legacy Survey: <span id="legacy-survey-status-text">checking…</span></span>
+        </span>
     </nav>
     <main class="main">
         {% block content %}{% endblock %}
     </main>
+    <div id="predict-modal" class="predict-modal" aria-hidden="true">
+        <div class="predict-modal-header">
+            <h3 class="predict-modal-title">Predictions</h3>
+            <span class="predict-modal-count" id="predict-modal-count">0</span>
+            <button type="button" class="predict-modal-toggle" id="predict-modal-toggle" aria-label="Collapse">−</button>
+        </div>
+        <div class="predict-modal-body">
+            <ul class="predict-modal-list" id="predict-modal-list"></ul>
+        </div>
+    </div>
 </body>
 </html>

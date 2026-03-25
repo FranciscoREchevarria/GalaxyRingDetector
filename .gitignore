@@ -2,3 +2,6 @@ __pycache__/
 images/
 uploads/
 model/
+predictions/
+debug*.log
+create_pr.ipynb

@@ -382,7 +382,7 @@ class RingDetectionZoobot(pl.LightningModule):
         """
         self.eval()
         probs_list = []
-        with torch.no_grad():
+        with torch.inference_mode():
             for k in range(n_rotations):
                 x_rot = torch.rot90(x, k=k, dims=(-2, -1))
                 probs_list.append(self.predict_proba(x_rot))

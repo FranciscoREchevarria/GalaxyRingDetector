@@ -17,3 +17,7 @@ This project is licensed under the [GPL-3.0](LICENSE). The model is derived from
 
 ## Local running
 uvicorn server:app --host 127.0.0.1 --port 8000 --reload
+
+## Configuration
+- **FAST_PREDICTION** (env): Set to `true` to disable test-time augmentation (TTA). Uses a single forward pass instead of 8, trading ~8x speed for slightly lower accuracy.
+- **fast** (request param): Same as above, per-request. Use `?fast=true` on GET endpoints or include `fast=true` in form/JSON body for POST endpoints.
