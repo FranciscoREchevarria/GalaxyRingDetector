@@ -2,24 +2,31 @@
 
 {% block title %}Galaxy Ring Detection - Predict One{% endblock %}
 
-{% block head_scripts %}
-<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-{% endblock %}
-
 {% block content %}
 <div class="page-header">
     <h1>Predict One Galaxy</h1>
+    <div class="actions">
+        <a href="/" class="btn btn-secondary">Back to Grid</a>
+    </div>
 </div>
 
 <div class="predict-form-container">
+    <div class="predict-form-options">
+        <label class="fast-prediction-option" title="Skip test-time augmentation (1 pass instead of 8). Faster but slightly less accurate.">
+            <input type="checkbox" id="fast-prediction" />
+            Fast prediction
+        </label>
+    </div>
     <div class="predict-form-col">
         <form
             hx-post="/api/predict_from_url"
             hx-target="#result-area"
             hx-swap="innerHTML"
+            hx-select=".predict-result-card"
             hx-indicator="#spinner"
             class="predict-form"
         >
+            <input type="hidden" name="fast" id="fast-prediction-url" value="false" />
             <label for="legacy_survey_url">Legacy Survey Cutout URL</label>
             <div class="url-input-row">
                 <input
@@ -40,14 +47,17 @@
 
     <div class="predict-form-col">
         <form
+            method="post"
+            enctype="multipart/form-data"
             hx-post="/api/predict_from_fits"
             hx-target="#result-area"
             hx-swap="innerHTML"
+            hx-select=".predict-result-card"
             hx-indicator="#spinner"
             hx-encoding="multipart/form-data"
-            hx-trigger="submit, change from:input[name=fits_file]"
             class="predict-form"
         >
+            <input type="hidden" name="fast" id="fast-prediction-fits" value="false" />
             <label for="fits_file">Upload FITS File</label>
             <div class="file-input-row">
                 <input
@@ -82,6 +92,18 @@
         <div class="expand-modal-body">
             <div id="predict-expand-modal-image" class="expand-modal-image" hidden></div>
             <div id="predict-expand-modal-3d-wrapper" class="expand-modal-3d-wrapper" hidden>
+                <div class="lupton-controls lupton-controls-modal">
+                    <label class="lupton-control">
+                        <span class="lupton-label">Stretch</span>
+                        <input type="range" id="predict-lupton-stretch-modal" min="0.1" max="2" step="0.1" value="0.5" />
+                        <span class="lupton-value" id="predict-lupton-stretch-value-modal">0.5</span>
+                    </label>
+                    <label class="lupton-control">
+                        <span class="lupton-label">Q</span>
+                        <input type="range" id="predict-lupton-q-modal" min="1" max="20" step="1" value="6" />
+                        <span class="lupton-value" id="predict-lupton-q-value-modal">6</span>
+                    </label>
+                </div>
                 <div class="channel-toggles channel-toggles-modal" id="predict-channel-toggles-modal">
                     <label class="channel-toggle"><input type="checkbox" name="channel-modal" value="g" checked> g</label>
                     <label class="channel-toggle"><input type="checkbox" name="channel-modal" value="r" checked> r</label>
@@ -94,304 +116,4 @@
         </div>
     </div>
 </div>
-
-<script>
-(function() {
-    let plot3dData = null;
-
-    const greenColorscale = [
-        [0, 'rgb(200, 245, 200)'],
-        [0.3, 'rgb(140, 200, 140)'],
-        [0.6, 'rgb(80, 150, 80)'],
-        [1, 'rgb(0, 80, 0)']
-    ];
-    const redColorscale = [
-        [0, 'rgb(255, 220, 220)'],
-        [0.15, 'rgb(255, 220, 220)'],
-        [0.3, 'rgb(210, 160, 160)'],
-        [0.6, 'rgb(150, 80, 80)'],
-        [1, 'rgb(80, 0, 0)']
-    ];
-    const blueColorscale = [
-        [0, 'rgb(220, 235, 255)'],
-        [0.3, 'rgb(170, 195, 240)'],
-        [0.6, 'rgb(120, 150, 215)'],
-        [1, 'rgb(60, 80, 160)']
-    ];
-
-    function buildTraces(data, opacity) {
-        const op = opacity === 1 ? 1 : 0.75;
-        return data.channels.map(ch => ({
-            z: ch.z_data,
-            x: data.x,
-            y: data.y,
-            type: 'surface',
-            name: ch.name,
-            colorscale: ch.name === 'g' ? greenColorscale : ch.name === 'r' ? redColorscale : blueColorscale,
-            opacity: op
-        }));
-    }
-
-    function buildLayout(margin, expanded) {
-        const scene = {
-            xaxis: { title: 'x', autorange: 'reversed' },
-            yaxis: { title: 'y' },
-            zaxis: { title: 'Flux' }
-        };
-        if (expanded) {
-            scene.domain = { x: [0, 1], y: [0, 1] };
-            scene.aspectmode = 'auto';
-        }
-        const layout = {
-            margin: margin || { t: 40, r: 20, b: 40, l: 20 },
-            scene: scene
-        };
-        if (expanded) layout.autosize = true;
-        return layout;
-    }
-
-    const channelOrder = ['g', 'r', 'z'];
-
-    function getVisibilityFromCheckboxes(containerId) {
-        const container = document.getElementById(containerId);
-        if (!container) return [true, true, true];
-        const inputs = container.querySelectorAll('input[name="channel"], input[name="channel-modal"]');
-        return channelOrder.map(name => {
-            const cb = Array.from(inputs).find(i => i.value === name);
-            return cb ? cb.checked : true;
-        });
-    }
-
-    function updatePlotVisibility(plotId, visibility) {
-        const el = document.getElementById(plotId);
-        if (!el) return;
-        Plotly.restyle(el, { visible: visibility });
-    }
-
-    function setupChannelToggles(containerId, plotId) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-        container.querySelectorAll('input[name="channel"], input[name="channel-modal"]').forEach(input => {
-            input.addEventListener('change', function() {
-                const visibility = getVisibilityFromCheckboxes(containerId);
-                updatePlotVisibility(plotId, visibility);
-            });
-        });
-    }
-
-    function updateZAxisWrap(plotId, wrap) {
-        const el = document.getElementById(plotId);
-        if (!el) return;
-        if (wrap) {
-            Plotly.relayout(el, { 'scene.zaxis.range': [0, 1], 'scene.zaxis.autorange': false });
-        } else {
-            Plotly.relayout(el, { 'scene.zaxis.autorange': true });
-        }
-    }
-
-    function setupZAxisWrapToggle(checkboxId, plotId) {
-        const cb = document.getElementById(checkboxId);
-        if (!cb) return;
-        cb.addEventListener('change', function() {
-            updateZAxisWrap(plotId, cb.checked);
-        });
-    }
-
-    function updatePlotOpacity(plotId, solid) {
-        const el = document.getElementById(plotId);
-        if (!el) return;
-        const op = solid ? 1 : 0.75;
-        Plotly.restyle(el, { opacity: [op, op, op] });
-    }
-
-    function setupSolidColorsToggle(checkboxId, plotId) {
-        const cb = document.getElementById(checkboxId);
-        if (!cb) return;
-        cb.addEventListener('change', function() {
-            updatePlotOpacity(plotId, cb.checked);
-        });
-    }
-
-    function initPlot(data) {
-        plot3dData = data;
-        const traces = buildTraces(data);
-        Plotly.newPlot('predict-3d-container', traces, buildLayout(), { responsive: true });
-        setupChannelToggles('predict-channel-toggles', 'predict-3d-container');
-        setupZAxisWrapToggle('predict-zwrap-main', 'predict-3d-container');
-        setupSolidColorsToggle('predict-solid-colors-main', 'predict-3d-container');
-    }
-
-    function setupExpandModal() {
-        const modal = document.getElementById('predict-expand-modal');
-        const modalTitle = document.getElementById('predict-expand-modal-title');
-        const modalImage = document.getElementById('predict-expand-modal-image');
-        const modal3dWrapper = document.getElementById('predict-expand-modal-3d-wrapper');
-        const modal3d = document.getElementById('predict-expand-modal-3d');
-        const closeBtn = document.getElementById('predict-close-expand-modal');
-        const backdrop = modal ? modal.querySelector('.expand-modal-backdrop') : null;
-
-        if (!modal || !closeBtn) return;
-
-        function closeModal() {
-            modal.setAttribute('hidden', '');
-            document.body.style.overflow = '';
-            modalImage.hidden = true;
-            modal3dWrapper.hidden = true;
-            modalImage.innerHTML = '';
-            if (modal3d && modal3d.querySelector('.plotly')) {
-                Plotly.purge(modal3d);
-            }
-        }
-
-        function openModal() {
-            document.body.style.overflow = 'hidden';
-            modal.removeAttribute('hidden');
-        }
-
-        let rgbZoomScale = 1;
-
-        function setupRgbZoom(imgEl, containerEl, innerEl, zoomIndicatorEl) {
-            rgbZoomScale = 1;
-            const w = imgEl.naturalWidth;
-            const h = imgEl.naturalHeight;
-            if (!w || !h) return;
-
-            function applyZoom() {
-                imgEl.style.width = w + 'px';
-                imgEl.style.height = h + 'px';
-                imgEl.style.transform = 'scale(' + rgbZoomScale + ')';
-                imgEl.style.transformOrigin = '0 0';
-                innerEl.style.width = (w * rgbZoomScale) + 'px';
-                innerEl.style.height = (h * rgbZoomScale) + 'px';
-                if (zoomIndicatorEl) zoomIndicatorEl.textContent = Math.round(rgbZoomScale * 100) + '%';
-            }
-
-            applyZoom();
-            containerEl.scrollTop = 0;
-            containerEl.scrollLeft = 0;
-
-            containerEl.addEventListener('wheel', function onRgbWheel(e) {
-                e.preventDefault();
-                const rect = containerEl.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
-                const scrollX = containerEl.scrollLeft;
-                const scrollY = containerEl.scrollTop;
-
-                const delta = e.deltaY > 0 ? -0.15 : 0.15;
-                const newScale = Math.min(5, Math.max(0.5, rgbZoomScale + delta));
-                if (newScale === rgbZoomScale) return;
-
-                const ratio = newScale / rgbZoomScale;
-                rgbZoomScale = newScale;
-                applyZoom();
-
-                containerEl.scrollLeft = (scrollX + mx) * ratio - mx;
-                containerEl.scrollTop = (scrollY + my) * ratio - my;
-            }, { passive: false });
-        }
-
-        const expandRgbBtn = document.getElementById('predict-expand-rgb');
-        if (expandRgbBtn) {
-            expandRgbBtn.onclick = function() {
-                const img = document.getElementById('predict-galaxy-rgb-img');
-                if (!img) return;
-                modalTitle.textContent = 'RGB Image';
-                modalImage.innerHTML = '<div class="expand-modal-image-zoom"><span class="rgb-zoom-percentage" aria-live="polite">100%</span><div class="expand-modal-image-inner"><img src="' + img.src + '" alt="Galaxy RGB cutout (expanded)" class="expand-modal-img"></div></div>';
-                modalImage.hidden = false;
-                modal3dWrapper.hidden = true;
-                openModal();
-
-                const zoomContainer = modalImage.querySelector('.expand-modal-image-zoom');
-                const innerEl = modalImage.querySelector('.expand-modal-image-inner');
-                const modalImg = modalImage.querySelector('.expand-modal-img');
-                const zoomIndicator = modalImage.querySelector('.rgb-zoom-percentage');
-                if (zoomContainer && innerEl && modalImg) {
-                    if (modalImg.complete && modalImg.naturalWidth) {
-                        setupRgbZoom(modalImg, zoomContainer, innerEl, zoomIndicator);
-                    } else {
-                        modalImg.addEventListener('load', function() {
-                            setupRgbZoom(modalImg, zoomContainer, innerEl, zoomIndicator);
-                        });
-                    }
-                }
-            };
-        }
-
-        const expand3dBtn = document.getElementById('predict-expand-3d');
-        if (expand3dBtn) {
-            expand3dBtn.onclick = function() {
-                if (!plot3dData) return;
-                modalTitle.textContent = '3D Surface (g, r, z channels)';
-                modalImage.hidden = true;
-                modal3dWrapper.hidden = false;
-                modal3d.innerHTML = '';
-                ['g', 'r', 'z'].forEach(name => {
-                    const cb = modal3dWrapper.querySelector('input[value="' + name + '"]');
-                    if (cb) cb.checked = true;
-                });
-                const solidMain = document.getElementById('predict-solid-colors-main');
-                const solidModal = document.getElementById('predict-solid-colors-modal');
-                const opacity = solidMain && solidMain.checked ? 1 : 0.75;
-                const traces = buildTraces(plot3dData, opacity);
-                Plotly.newPlot(modal3d, traces, buildLayout({ t: 20, r: 20, b: 20, l: 0 }, true), { responsive: true });
-                setupChannelToggles('predict-channel-toggles-modal', 'predict-expand-modal-3d');
-                const zwrapModal = document.getElementById('predict-zwrap-modal');
-                if (zwrapModal) zwrapModal.checked = document.getElementById('predict-zwrap-main') ? document.getElementById('predict-zwrap-main').checked : false;
-                setupZAxisWrapToggle('predict-zwrap-modal', 'predict-expand-modal-3d');
-                if (zwrapModal && zwrapModal.checked) updateZAxisWrap('predict-expand-modal-3d', true);
-                if (solidModal) solidModal.checked = solidMain ? solidMain.checked : false;
-                setupSolidColorsToggle('predict-solid-colors-modal', 'predict-expand-modal-3d');
-                openModal();
-                requestAnimationFrame(function() { Plotly.Plots.resize(modal3d); });
-            };
-        }
-
-        closeBtn.addEventListener('click', closeModal);
-        if (backdrop) backdrop.addEventListener('click', closeModal);
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && !modal.hasAttribute('hidden')) closeModal();
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        htmx.on('htmx:afterSwap', function(evt) {
-            if (evt.detail.target.id === 'result-area') {
-                const card = evt.detail.target.querySelector('.predict-result-card');
-                if (card) {
-                    const ra = card.dataset.ra;
-                    const dec = card.dataset.dec;
-                    const fitsId = card.dataset.fitsId;
-                    const container = document.getElementById('predict-3d-container');
-                    if (container) {
-                        const url = fitsId
-                            ? '/api/galaxy_3d_data_fits?fits_id=' + encodeURIComponent(fitsId)
-                            : (ra && dec ? '/api/galaxy_3d_data?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec) : null);
-                        if (url) {
-                            fetch(url)
-                                .then(r => r.json())
-                                .then(data => {
-                                    initPlot(data);
-                                    setupExpandModal();
-                                })
-                                .catch(err => {
-                                    container.textContent = '';
-                                    const p = document.createElement('p');
-                                    p.className = 'error';
-                                    p.textContent = 'Failed to load 3D data: ' + (err && err.message ? err.message : String(err));
-                                    container.appendChild(p);
-                                    setupExpandModal();
-                                });
-                        } else {
-                            setupExpandModal();
-                        }
-                    } else {
-                        setupExpandModal();
-                    }
-                }
-            }
-        });
-    });
-})();
-</script>
 {% endblock %}

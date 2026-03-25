@@ -1,11 +1,11 @@
-<tr{% if row.get('error') %} title="Error: {{ row.error }}"{% endif %}>
+<tr data-obj-id="{{ row.objId }}"{% if row.get('error') %} class="row-error"{% endif %}>
     <td>{{ row.objId }}</td>
     <td>{{ row.ra }}</td>
     <td>{{ row.dec }}</td>
-    <td>{{ "%.4f"|format(row.inner_ring_prob) }}</td>
-    <td>{{ "%.4f"|format(row.outer_ring_prob) }}</td>
-    <td>{{ "Yes" if row.inner_ring_detected else "No" }}</td>
-    <td>{{ "Yes" if row.outer_ring_detected else "No" }}</td>
-    <td><a href="{{ row.link }}" target="_blank" rel="noopener">Legacy Survey <svg class="icon-external" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></td>
-    <td><a href="/view/{{ row.objId }}?ra={{ row.ra }}&dec={{ row.dec }}" class="btn btn-small btn-view" data-ra="{{ row.ra }}" data-dec="{{ row.dec }}" data-obj-id="{{ row.objId }}">View</a></td>
+    <td>{% if row.get('inner_ring_prob') is not none %}{{ "%.4f"|format(row.inner_ring_prob) }}{% else %}—{% endif %}</td>
+    <td>{% if row.get('outer_ring_prob') is not none %}{{ "%.4f"|format(row.outer_ring_prob) }}{% else %}—{% endif %}</td>
+    <td>{% if row.get('inner_ring_detected') is not none %}{{ "Yes" if row.inner_ring_detected else "No" }}{% else %}—{% endif %}</td>
+    <td>{% if row.get('outer_ring_detected') is not none %}{{ "Yes" if row.outer_ring_detected else "No" }}{% else %}—{% endif %}</td>
+    <td><a href="{{ row.link }}" target="_blank" rel="noopener" hx-boost="false">Legacy Survey <svg class="icon-external" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></td>
+    <td>{% if row.get('error') %}<span class="row-error-icon row-retry" role="button" tabindex="0" title="Click to retry: {{ row.error }}" aria-label="Error: {{ row.error }}. Click to retry" data-obj-id="{{ row.objId }}" data-ra="{{ row.ra }}" data-dec="{{ row.dec }}" data-error="{{ row.error }}"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>{% elif row.get('inner_ring_prob') is not none %}<a href="/view/{{ row.objId }}?ra={{ row.ra }}&dec={{ row.dec }}{% if row.get('fast') %}&fast=true{% endif %}" class="btn btn-small btn-view" data-ra="{{ row.ra }}" data-dec="{{ row.dec }}" data-obj-id="{{ row.objId }}">View</a>{% else %}<button type="button" class="btn btn-small btn-predict" data-obj-id="{{ row.objId }}" data-ra="{{ row.ra }}" data-dec="{{ row.dec }}">Predict</button>{% endif %}</td>
 </tr>
