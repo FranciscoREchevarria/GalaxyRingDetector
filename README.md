@@ -32,12 +32,16 @@ From the project root (where `Dockerfile` is located), run:
 docker build -t galaxy-ring-detector:local .
 ```
 
+or run `build_docker_image.bat` in the root directory
+
 ### 3) Run the container
 Run the app on port `7860` (container) and expose it on `7860` (host):
 
 ```bash
 docker run --name galaxy-ring-detector -p 7860:7860 galaxy-ring-detector:local
 ```
+
+or run `run_docker_container.bat` in the root directory.
 
 Open: http://127.0.0.1:7860
 
