@@ -1,0 +1,1 @@
+docker build -t galaxy-ring-detector:local .
