@@ -237,13 +237,13 @@ templates = Jinja2Templates(directory=str(templates_path))
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Render index.html with empty grid."""
-    return templates.TemplateResponse("index.html", {"request": request, "results": []})
+    return templates.TemplateResponse(request, "index.html", {"results": []})
 
 
 @app.get("/predict", response_class=HTMLResponse)
 async def predict_page(request: Request):
     """Render predict.html with URL form."""
-    return templates.TemplateResponse("predict.html", {"request": request})
+    return templates.TemplateResponse(request, "predict.html")
 
 @app.get("/api/debug_legacy_survey")
 async def debug_legacy_survey():
@@ -317,9 +317,9 @@ async def view_page(
                 outer_ring_detected = False
 
     return templates.TemplateResponse(
+        request,
         "view.html",
         {
-            "request": request,
             "obj_id": obj_id,
             "ra": ra,
             "dec": dec,
@@ -786,8 +786,9 @@ async def predict_from_url(
     }
 
     return templates.TemplateResponse(
+        request,
         "partials/predict_result.html",
-        {"request": request, **result}
+        result,
     )
 
 
@@ -839,8 +840,9 @@ async def predict_from_fits(
     }
 
     return templates.TemplateResponse(
+        request,
         "partials/predict_result.html",
-        {"request": request, **result}
+        result,
     )
 
 
