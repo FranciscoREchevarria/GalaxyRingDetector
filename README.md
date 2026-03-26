@@ -11,6 +11,9 @@ app_port: 7860
 
 Detect inner and outer rings in galaxy images using a fine-tuned Zoobot model with a custom multilabel head.
 
+INNER_THRESHOLD = 0.580
+OUTER_THRESHOLD = 0.480
+
 ## License
 
 This project is licensed under the [GPL-3.0](LICENSE). The model is derived from [Zoobot 2.0](https://github.com/mwalmsley/zoobot), which is also licensed under GPL-3.0.
